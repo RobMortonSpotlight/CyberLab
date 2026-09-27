@@ -50,8 +50,6 @@ stages:
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                # Delete old container if exists
-                az container delete --resource-group cyberpathways-rg --name cyberbeacon --yes 2>/dev/null || true
 
                 # Create new container with latest image
                 az container create \
