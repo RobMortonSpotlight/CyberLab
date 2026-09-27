@@ -10,6 +10,8 @@ variables:
   containerRegistry: 'cyberlabacr.azurecr.io'
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
   tag: '$(Build.BuildId)'
+  REGISTRY_USERNAME: 'cyberlabacr'
+  REGISTRY_PASSWORD: '9PVcAQlpU63aw116f8eV5sYAiZc5JbAoipS5kDOVWnkd7kYLoseAJQQJ99CIACYeBjFEqg7NAAACAZCRi4iB'
 
 stages:
 - stage: Build
