@@ -1,0 +1,8 @@
+com/cyberlab/CyberLabControllerApplication.class
+com/cyberlab/service/FindingValidationService$FindingValidator.class
+com/cyberlab/model/SecurityFinding$Difficulty.class
+com/cyberlab/service/LabHealthService.class
+com/cyberlab/model/SecurityFinding.class
+com/cyberlab/controller/LabController.class
+com/cyberlab/service/FindingValidationService.class
+com/cyberlab/model/LabTarget.class

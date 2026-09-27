@@ -1,0 +1,253 @@
+
+services:
+  # ============================================================================
+  # TARGET 1: FIREWALL / ROUTER
+  # ============================================================================
+  firewall:
+    image: cyberlab/firewall:latest
+    container_name: cyberlab-firewall
+    build:
+      context: ./targets/firewall
+      dockerfile: Dockerfile
+    networks:
+      external:
+      internal:
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.send_redirects=0
+    environment:
+      - FIREWALL_MODE=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/firewall-healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================================
+  # TARGET 2: LINUX APPLICATION SERVER
+  # ============================================================================
+  linux-server:
+    image: cyberlab/linux-server:latest
+    container_name: cyberlab-linux-server
+    build:
+      context: ./targets/linux-server
+      dockerfile: Dockerfile
+    networks:
+      external:
+      internal:
+    ports:
+      - "22:22"
+      - "80:80"
+      - "443:443"
+      - "21:21"
+      - "53:53/udp"
+    volumes:
+      - linux-data:/home/cyberlab
+      - linux-logs:/var/log
+    environment:
+      - HOSTNAME=linux-server.cyberlab.local
+      - ENVIRONMENT=lab
+    depends_on:
+      firewall:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================================
+  # TARGET 3: WINDOWS WORKSTATION
+  # ============================================================================
+  windows-workstation:
+    image: cyberlab/windows-workstation:latest
+    container_name: cyberlab-windows-workstation
+    build:
+      context: ./targets/windows-workstation
+      dockerfile: Dockerfile
+    networks:
+      internal:
+    environment:
+      - HOSTNAME=ws-employee.cyberlab.local
+      - WORKGROUP=CYBERLAB
+    depends_on:
+      firewall:
+        condition: service_healthy
+      linux-server:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/smb-healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================================
+  # TARGET 4: WINDOWS SERVER
+  # ============================================================================
+  windows-server:
+    image: cyberlab/windows-server:latest
+    container_name: cyberlab-windows-server
+    build:
+      context: ./targets/windows-server
+      dockerfile: Dockerfile
+    networks:
+      internal:
+    environment:
+      - HOSTNAME=server.cyberlab.local
+      - DOMAIN=cyberlab.local
+      - ROLE=fileserver
+    depends_on:
+      firewall:
+        condition: service_healthy
+      windows-workstation:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/fileserver-healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================================
+  # TARGET 5: IoT / MANAGEMENT DEVICE
+  # ============================================================================
+  iot-device:
+    image: cyberlab/iot-device:latest
+    container_name: cyberlab-iot-device
+    build:
+      context: ./targets/iot-device
+      dockerfile: Dockerfile
+    networks:
+      internal:
+    environment:
+      - DEVICE_TYPE=ipmi
+      - DEVICE_ID=bmc-lab-01
+      - DEFAULT_USER=admin
+      - DEFAULT_PASS=CyberLab@123
+    depends_on:
+      firewall:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/ipmi-healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================================
+  # LAB MANAGEMENT SERVICE (Java-based)
+  # ============================================================================
+  lab-controller:
+    image: cyberlab/lab-controller:latest
+    container_name: cyberlab-controller
+    build:
+      context: ./lab-controller
+      dockerfile: Dockerfile
+    networks:
+      - management
+      - external
+      - internal
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    environment:
+      - JAVA_OPTS=-Xmx512m -Xms256m
+      - SPRING_PROFILES_ACTIVE=production
+      - LAB_MODE=simulation
+      - FIREWALL_HOST=firewall
+      - LINUX_HOST=linux-server
+      - WINDOWS_WS_HOST=windows-workstation
+      - WINDOWS_SRV_HOST=windows-server
+      - IOT_HOST=iot-device
+    volumes:
+      - lab-logs:/var/log/cyberlab
+      - lab-data:/data/cyberlab
+    depends_on:
+      - firewall
+      - linux-server
+      - windows-workstation
+      - windows-server
+      - iot-device
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================================
+  # STUDENT PORTAL - Static Files (Dashboard & Terminal UI)
+  # ============================================================================
+  student-portal-web:
+    image: python:3.11-alpine
+    container_name: cyberlab-student-portal-web
+    working_dir: /app
+    command: python3 -m http.server 3000
+    volumes:
+      - ./student-portal:/app
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:3000/index.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================================
+  # TERMINAL SERVER - Interactive Terminal with Lab Network Access
+  # ============================================================================
+  terminal-server:
+    build:
+      context: ./student-portal
+      dockerfile: Dockerfile
+    image: cyberlab/terminal-server:latest
+    container_name: cyberlab-terminal-server
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    networks:
+      - external
+      - internal
+      - management
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:3001/api/terminal-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      - firewall
+      - linux-server
+      - windows-workstation
+      - windows-server
+      - iot-device
+      - lab-controller
+
+networks:
+  external:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.1.0/24
+  internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+  management:
+    driver: bridge
+
+volumes:
+  linux-data:
+  linux-logs:
+  lab-logs:
+  lab-data:
