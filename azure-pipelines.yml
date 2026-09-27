@@ -63,6 +63,7 @@ stages:
                   --memory 4 \
                   --registry-username $(REGISTRY_USERNAME) \
                   --registry-password $(REGISTRY_PASSWORD) \
+                  --environment-variables OLLAMA_HOST="http://ollama-service.eastus.azurecontainer.io:11434" \
                   --ports 3000 3001 \
                   --ip-address Public \
                   --dns-name-label cyberbeacon-jumpstart
